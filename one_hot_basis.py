@@ -20,7 +20,7 @@ def reflected_qary_gray_digits(n, q):
         out.extend((a,) + t for t in block)
     return out
 
-def one_hot_bounce_bitstrings(n, q):
+def one_hot_bounce_bitstrings(n, q, rev=True):
     """
     The *first* register is the fastest-changing one.
     """
@@ -29,7 +29,8 @@ def one_hot_bounce_bitstrings(n, q):
     one_hot_bitstrings = []
     for digits in digits_list:
         # ---- KEY FIX: reverse digit order when mapping to registers ----
-        digits = digits[::-1]
+        if rev:
+            digits = digits[::-1]
         chunks = []
         for d in digits:
             reg = ['0'] * q
@@ -43,18 +44,7 @@ def one_hot_bounce_bitstrings_product(D, n, q, output_mode="str_tuple"):
     """
     Now: the *first* register is the fastest-changing one.
     """
-    digits_list = reflected_qary_gray_digits(n, q)
-
-    one_hot_bitstrings = []
-    for digits in digits_list:
-        # ---- KEY FIX: reverse digit order when mapping to registers ----
-        digits = digits[::-1]
-        chunks = []
-        for d in digits:
-            reg = ['0'] * q
-            reg[d] = '1'
-            chunks.append(''.join(reg))
-        one_hot_bitstrings.append(''.join(chunks))
+    one_hot_bitstrings = one_hot_bounce_bitstrings(n, q)
 
     if output_mode == "str":
         one_hot_D_copies = [one_hot_bitstrings]*D
