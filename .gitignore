@@ -8,3 +8,8 @@ __pycache__/
 # OS / editors
 .vscode/
 .DS_Store
+
+# Archived
+MPS_archive_1/
+MPS_archive_2/
+MPS_archive_3/
