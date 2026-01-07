@@ -178,7 +178,6 @@ def ith_lex_onehot(n: int, q: int, i: int, reverse=True) -> str:
     else:
         return bitstring[::-1]
 
-
 def ith_gray_onehot(n: int, q: int, i: int, reverse=True) -> str:
     """
     Return the i-th bitstring (0-based) in the reflected-base-q Gray/snake
@@ -207,7 +206,8 @@ def ith_gray_onehot(n: int, q: int, i: int, reverse=True) -> str:
             a[k] = d[k]
         else:
             a[k] = (q - 1) - d[k]
-        parity ^= (d[k] & 1)  # update parity with current digit's parity
+        parity ^= (a[k] & 1)  # update parity with current digit's parity
+        
 
     # build one-hot blocks
     blocks = []
@@ -221,7 +221,6 @@ def ith_gray_onehot(n: int, q: int, i: int, reverse=True) -> str:
         return bitstring
     else:
         return bitstring[::-1]
-    
 
 def ith_gray_binary(n: int, i: int, reverse=True) -> str:
     def gray_int(i: int) -> int:

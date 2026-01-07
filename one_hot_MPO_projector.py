@@ -78,7 +78,7 @@ def mpo_prod_one_hot_projector(n, q, *, upper_ind_id="k{}", lower_ind_id="b{}"):
 # quick sanity check (small q)
 # ----------------
 if __name__ == "__main__":
-    n = 2
+    n = 5
     q = 3
     P = mpo_prod_one_hot_projector(n, q)
     P.show()

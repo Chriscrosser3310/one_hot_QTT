@@ -542,7 +542,9 @@ def one_hot_gray_trotter_evolution(D, n, q, W, dt, n_steps,
         for mpo in trotter_mpos:
             perfect_mps = mpo.apply(
                 perfect_mps,
-                compress=False
+                compress=True,
+                max_bond=None,
+                cutoff=1E-15
             )
         perfect_mps.normalize()
         
@@ -551,9 +553,10 @@ def one_hot_gray_trotter_evolution(D, n, q, W, dt, n_steps,
             new_mps = mpo.apply(
                 new_mps,
                 compress=True,
-                max_bond=max_bond,
-                cutoff=cutoff,
+                max_bond=None,
+                cutoff=1E-15
             )
+        new_mps.compress(max_bond=max_bond, cutoff=cutoff)
         new_mps.normalize()
         
         cur_mps = new_mps
@@ -688,7 +691,9 @@ def binary_gray_trotter_evolution(D, n, W, dt, n_steps,
         for mpo in trotter_mpos:
             perfect_mps = mpo.apply(
                 perfect_mps,
-                compress=False
+                compress=True,
+                max_bond=None,
+                cutoff=1E-15
             )
         perfect_mps.normalize()
         
@@ -697,9 +702,10 @@ def binary_gray_trotter_evolution(D, n, W, dt, n_steps,
             new_mps = mpo.apply(
                 new_mps,
                 compress=True,
-                max_bond=max_bond,
-                cutoff=cutoff,
+                max_bond=None,
+                cutoff=1E-15
             )
+        new_mps.compress(max_bond=max_bond, cutoff=cutoff)
         new_mps.normalize()
         
         cur_mps = new_mps
