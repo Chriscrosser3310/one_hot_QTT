@@ -133,8 +133,13 @@ def binary_gray_trotter_circuit(D, n, W, dt, n_steps,
                             init_state="center",
                             disorder_type=None,
                             seed=0,
-                            measure=True):
-    qc = QuantumCircuit(D*n, D*n)
+                            measure=True,
+                            with_ancilla=False):
+    
+    if with_ancilla:
+        qc = QuantumCircuit(2*D*n, 2*D*n)
+    else:
+        qc = QuantumCircuit(D*n, D*n)
 
     if init_state == "center":
         for d in range(D):
@@ -149,7 +154,21 @@ def binary_gray_trotter_circuit(D, n, W, dt, n_steps,
             for l in range(1, n):
                 for lp in range(l-1):
                     qc.x(d*n + lp)
-                qc.mcrx(-2*dt, range(d*n, d*n + l), d*n + l)
+                if with_ancilla:
+                    qc.h(d*n + l)
+                    qc.mcx(list(range(d*n, d*n + l)), d*n + l, ancilla_qubits=list(range(D*n, 2*D*n)), mode="v-chain")
+                    qc.rz(-2*dt, d*n + l)
+                    qc.mcx(list(range(d*n, d*n + l)), d*n + l, ancilla_qubits=list(range(D*n, 2*D*n)), mode="v-chain")
+                    qc.h(d*n + l)
+                else:
+                    qc.mcrx(-2*dt, range(d*n, d*n + l), d*n + l)
+                    '''
+                    qc.h(d*n + l)
+                    qc.mcx(list(range(d*n, d*n + l)), d*n + l)
+                    qc.rz(-2*dt, d*n + l)
+                    qc.mcx(list(range(d*n, d*n + l)), d*n + l)
+                    qc.h(d*n + l)
+                    '''
                 for lp in range(l-1):
                     qc.x(d*n + lp)
     if measure:
@@ -187,6 +206,8 @@ def one_hot_gray_trotter_circuit(D, n, q, W, dt, n_steps,
                         qc.append(mc_rxy, even_controls + [d*q*n + q*l+m, d*q*n + q*l+m+1])
                     for m in range(1, q-1, 2):
                         qc.append(mc_rxy, odd_controls + [d*q*n + q*l+m, d*q*n + q*l+m+1])
+            else:
+                pass
         
     if measure:
         qc.measure(range(D*q*n), range(D*q*n))

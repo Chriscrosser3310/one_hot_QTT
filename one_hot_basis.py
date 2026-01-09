@@ -200,13 +200,15 @@ def ith_gray_onehot(n: int, q: int, i: int, reverse=True) -> str:
 
     # compute coordinates a_k using parity of more-significant digits
     a = [0] * n
-    parity = 0  # parity of sum of digits above current k (mod 2), built MSB->LSB
     for k in range(n - 1, -1, -1):
+        parity = 0
+        for l in range(n - 1, k, -1):
+            parity ^= (a[l] & 1)
         if parity == 0:
             a[k] = d[k]
         else:
             a[k] = (q - 1) - d[k]
-        parity ^= (a[k] & 1)  # update parity with current digit's parity
+        #parity ^= (d[k] & 1)  # update parity with current digit's parity
         
 
     # build one-hot blocks
