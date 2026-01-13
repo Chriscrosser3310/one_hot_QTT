@@ -3,6 +3,7 @@ from qiskit import QuantumCircuit
 from qiskit.circuit.library import XXPlusYYGate, PauliEvolutionGate
 from qiskit.quantum_info import SparsePauliOp
 from one_hot_basis import ith_gray_binary, ith_gray_onehot
+from build_Hamiltonians import g_end
 
 def pauli_string_from_ops(num_qubits: int, ops_by_qubit: dict[int, str]) -> str:
     """
@@ -207,7 +208,22 @@ def one_hot_gray_trotter_circuit(D, n, q, W, dt, n_steps,
                     for m in range(1, q-1, 2):
                         qc.append(mc_rxy, odd_controls + [d*q*n + q*l+m, d*q*n + q*l+m+1])
             else:
-                pass
+                for m in range(0, q-1, 2):
+                     qc.append(XXPlusYYGate(-2*dt), (d*q*n + m, d*q*n + m+1))
+                for l in range(1, n):
+                    Pauli_op = build_H_xxyy_projected(l+1)
+                    mc_rxy = PauliEvolutionGate(Pauli_op, -dt)
+                    even_controls = [d*q*n + q*lp + q-1 for lp in range(l)]
+                    for m in range(0, q-1, 2):
+                        qc.append(mc_rxy, even_controls + [d*q*n + q*l+m, d*q*n + q*l+m+1])
+                for m in range(1, q-1, 2):
+                     qc.append(XXPlusYYGate(-2*dt), (d*q*n + m, d*q*n + m+1))
+                for l in range(1, n):
+                    Pauli_op = build_H_xxyy_projected(l+1)
+                    mc_rxy = PauliEvolutionGate(Pauli_op, -dt)
+                    odd_controls = [d*q*n + q*lp for lp in range(l)] 
+                    for m in range(1, q-1, 2):
+                        qc.append(mc_rxy, odd_controls + [d*q*n + q*l+m, d*q*n + q*l+m+1])
         
     if measure:
         qc.measure(range(D*q*n), range(D*q*n))

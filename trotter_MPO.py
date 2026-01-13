@@ -3,205 +3,9 @@ import quimb as qu
 import quimb.tensor as qtn
 from pathlib import Path
 from one_hot_MPO_projector import mpo_prod_one_hot_projector
-from MPO_utilities import kronMPOs
+from gate_matrices import *
+from MPO_utilities import *
 from one_hot_basis import ith_lex_binary, ith_gray_binary, ith_lex_onehot, ith_gray_onehot
-
-#===============================================
-#================== utilities ==================
-#===============================================
-
-# ---- compatibility patch for some quimb/autoray versions ----
-if not hasattr(qu, "transpose"):
-    qu.transpose = np.transpose
-    
-
-def _as_np(x):
-    return np.asarray(x, dtype=complex)
-
-P0 = _as_np([[1, 0],
-             [0, 0]])
-P1 = _as_np([[0, 0],
-             [0, 1]])
-PauliI = _as_np([[1, 0],
-                 [0, 1]]) 
-PauliX = _as_np([[0, 1],
-                 [1, 0]]) 
-PauliY = _as_np([[0, -1j],
-                 [1j, 0]]) 
-PauliZ = _as_np([[1, 0],
-                 [0, -1]]) 
-
-def exp_i_theta_X(theta):
-    c = np.cos(theta)
-    s = 1j * np.sin(theta)
-    return _as_np([
-        [c,   s],
-        [s,   c]
-    ])
-
-def exp_i_theta_Z(theta):
-    return _as_np([
-        [np.exp(1j* theta), 0.0],
-        [0.0,  np.exp(-1j* theta)],
-    ])
-
-#exp(-i theta (XX + YY)/2)
-def exp_i_theta_xx_yy_over_two(theta):
-    c = np.cos(theta)
-    s = 1j * np.sin(theta)
-    return _as_np([
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0,   c,   s, 0.0],
-        [0.0,   s,   c, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ])
-    
-def exp_i_theta_ZZ(theta):
-    return _as_np([
-        [np.exp(1j* theta), 0.0, 0.0, 0.0],
-        [0.0, np.exp(-1j* theta), 0.0, 0.0],
-        [0.0, 0.0, np.exp(-1j* theta), 0.0],
-        [0.0, 0.0, 0.0, np.exp(1j* theta)],
-    ])
-
-
-def mpo_identity_arrays(L, d=2):
-    """Identity MPO with *rank-3 boundaries*: left is (r,u,d), right is (l,u,d)."""
-    I = _as_np(np.eye(d))
-    arrs = []
-    for s in range(L):
-        if s == 0:
-            arrs.append(I.reshape(1, d, d).copy())      # (Dr=1, u, d) == "rud"
-        elif s == L - 1:
-            arrs.append(I.reshape(1, d, d).copy())      # (Dl=1, u, d) == "lud"
-        else:
-            arrs.append(I.reshape(1, 1, d, d).copy())   # (Dl, Dr, u, d) == "lrud"
-    return arrs
-
-
-def mpo_from_arrays(arrs, *, upper_ind_id="k{}", lower_ind_id="b{}"):
-    """
-    Build MPO from a mix of:
-      left boundary:  (Dr, u, d)
-      middle:         (Dl, Dr, u, d)
-      right boundary: (Dl, u, d)
-    with shape='lrud' telling quimb what order these correspond to.
-    """
-    L = len(arrs)
-    arrs = [_as_np(A) for A in arrs]
-    return qtn.MatrixProductOperator(
-        arrs,
-        sites=range(L),
-        shape="lrud",
-        upper_ind_id=upper_ind_id,
-        lower_ind_id=lower_ind_id,
-    )
-
-
-def _set_site_tensor_with_boundary(arrs, s, W):
-    """
-    Put a rank-4 site tensor W[Dl,Dr,u,d] into arrs[s], but if s is a boundary,
-    drop the missing bond index to make it rank-3 as desired.
-    """
-    W = _as_np(W)
-    if s == 0:
-        # want (Dr,u,d) -> drop Dl (assumed 1)
-        if W.shape[0] != 1:
-            raise ValueError("Left boundary expects Dl=1.")
-        arrs[s] = W[0, :, :, :]          # (Dr,u,d)
-    elif s == len(arrs) - 1:
-        # want (Dl,u,d) -> drop Dr (assumed 1)
-        if W.shape[1] != 1:
-            raise ValueError("Right boundary expects Dr=1.")
-        arrs[s] = W[:, 0, :, :]          # (Dl,u,d)
-    else:
-        arrs[s] = W                      # (Dl,Dr,u,d)
-
-def mpo_product_unitaries(U_list, *, upper_ind_id="k{}", lower_ind_id="b{}"):
-    """
-    Build a rank-1 MPO (bond dim = 1) representing ⊗_i U_list[i].
-
-    Parameters
-    ----------
-    U_list : list of (2,2) arrays
-        One-qubit unitaries (or any 2x2 operators) for each site, in site order.
-    """
-    L = len(U_list)
-    arrs = []
-
-    for i, U in enumerate(U_list):
-        U = np.asarray(U, dtype=complex)
-        if U.shape != (2, 2):
-            raise ValueError(f"U_list[{i}] must have shape (2,2), got {U.shape}.")
-
-        if L == 1:
-            # single-site MPO can just be rank-2, but we keep boundary convention consistent:
-            arrs.append(U.reshape(1, 2, 2))          # "rud" (Dr,u,d)
-        elif i == 0:
-            arrs.append(U.reshape(1, 2, 2))          # left boundary: (Dr,u,d) == "rud"
-        elif i == L - 1:
-            arrs.append(U.reshape(1, 2, 2))          # right boundary: (Dl,u,d) == "lud"
-        else:
-            arrs.append(U.reshape(1, 1, 2, 2))       # middle: (Dl,Dr,u,d) == "lrud"
-
-    return qtn.MatrixProductOperator(
-        [np.asarray(A, dtype=complex) for A in arrs],
-        sites=range(L),
-        shape="lrud",
-        upper_ind_id=upper_ind_id,
-        lower_ind_id=lower_ind_id,
-    )
-
-def mpo_two_site_gate_nonlocal(L, j, k, U2, *, cutoff=1e-12):
-    if j == k:
-        raise ValueError("Need two distinct sites.")
-    if j > k:
-        j, k = k, j
-
-    d = 2
-    U2 = _as_np(U2)
-
-    # U2 -> (out_j,out_k,in_j,in_k) then to (out_j,in_j) x (out_k,in_k)
-    U = U2.reshape(d, d, d, d)
-    U = np.transpose(U, (0, 2, 1, 3))
-    M = U.reshape(d * d, d * d)
-
-    Uu, Ss, Vh = np.linalg.svd(M, full_matrices=False)
-    keep = np.where(Ss > cutoff)[0]
-    Uu = Uu[:, keep]
-    Ss = Ss[keep]
-    Vh = Vh[keep, :]
-
-    r = len(Ss)
-    sqrtS = np.sqrt(Ss)
-
-    Aops = [(Uu[:, a] * sqrtS[a]).reshape(d, d) for a in range(r)]
-    Bops = [(Vh[a, :] * sqrtS[a]).reshape(d, d) for a in range(r)]
-
-    arrs = mpo_identity_arrays(L, d=d)
-    I = _as_np(np.eye(d))
-
-    # site j core tensor: (Dl=1, Dr=r, u, d)
-    Aj = np.zeros((1, r, d, d), dtype=complex)
-    for a in range(r):
-        Aj[0, a, :, :] = Aops[a]
-    _set_site_tensor_with_boundary(arrs, j, Aj)
-
-    # middle propagation tensors: (Dl=r, Dr=r, u, d)
-    for s in range(j + 1, k):
-        W = np.zeros((r, r, d, d), dtype=complex)
-        for a in range(r):
-            W[a, a, :, :] = I
-        # NOTE: if s is boundary (can only happen if L=2, but then no middle), safe anyway
-        _set_site_tensor_with_boundary(arrs, s, W)
-
-    # site k core tensor: (Dl=r, Dr=1, u, d)
-    Bk = np.zeros((r, 1, d, d), dtype=complex)
-    for a in range(r):
-        Bk[a, 0, :, :] = Bops[a]
-    _set_site_tensor_with_boundary(arrs, k, Bk)
-
-    return mpo_from_arrays(arrs)
 
 def mpo_RXY_pairs(L, pairs, theta, *, max_bond=None, cutoff=1e-12):
     U2 = exp_i_theta_xx_yy_over_two(theta)
@@ -286,7 +90,7 @@ def multi_controlled_RXY_pairs_mpo(L, controls, pairs, theta, *,
     arrP1 = mpo_identity_arrays(L)
     for c in controls:
         W = P1.reshape(1, 1, 2, 2)
-        _set_site_tensor_with_boundary(arrP1, c, W)
+        set_site_tensor_with_boundary(arrP1, c, W)
     mpoAll1 = mpo_from_arrays(arrP1)
 
     # THEN branch: (Π_c P1(c)) ⊗ U_pairs
@@ -337,7 +141,7 @@ def multi_controlled_RX_mpo(L, controls, targets, theta, *,
     arrP1 = mpo_identity_arrays(L)
     for c in controls:
         W = P1.reshape(1, 1, 2, 2)
-        _set_site_tensor_with_boundary(arrP1, c, W)
+        set_site_tensor_with_boundary(arrP1, c, W)
     mpoAll1 = mpo_from_arrays(arrP1)
 
     # THEN branch: (Π_c P1(c)) ⊗ U_pairs
@@ -574,7 +378,7 @@ def one_hot_gray_trotter_evolution(D, n, q, W, dt, n_steps,
 #================== binary ==================
 #============================================
 
-def MC_X_trotter_step_mpos(D, n, dt, max_bond=None, cutoff=1e-12):
+def MC_RX_trotter_step_mpos(D, n, dt, max_bond=None, cutoff=1e-15):
     
     even_mpos = []
     odd_mpos = []
@@ -600,7 +404,7 @@ def binary_gray_trotter_evolution(D, n, W, dt, n_steps,
                       disorder_type=None,
                       seed=0,
                       max_bond=None, 
-                      cutoff=1e-12, 
+                      cutoff=1e-15, 
                       fidelity_type="all",
                       save_to_disk=True,
                       load_if_exists=True):
@@ -649,7 +453,7 @@ def binary_gray_trotter_evolution(D, n, W, dt, n_steps,
             print("Files not found, continue to generate MPS evolutions.")
             pass
 
-    X_even_mpos, X_odd_mpos = MC_X_trotter_step_mpos(
+    X_even_mpos, X_odd_mpos = MC_RX_trotter_step_mpos(
         D, n, dt,
         max_bond=None,
         cutoff=cutoff,
