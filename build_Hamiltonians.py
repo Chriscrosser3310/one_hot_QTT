@@ -33,10 +33,14 @@ def sym_outer_ij(i: int, j: int, q: int, dtype=float) -> np.ndarray:
     M[j, i] = 1
     return M
 
-def proj_to_subspace(H, basis, base):
+def string_basis_to_indices(basis, base):
     l = []
     for b in basis:
         l.append(int(b, base=base))
+    return l
+
+def proj_to_subspace(H, basis, base):
+    l = string_basis_to_indices(basis, base)
     return H[np.ix_(l, l)]
 
 def kron(mat_list):
@@ -85,6 +89,59 @@ def is_banded_toeplitz(A, w: int, tol: float = 1e-12) -> bool:
                 return False
 
     return True
+
+import numpy as np
+
+def is_invariant_subspace(H, S, tol=1e-12, assume_hermitian=False):
+    """
+    Check whether span{e_i : i in S} is invariant under H in the standard basis.
+
+    Returns (ok, max_offblock, where) where:
+      ok: bool
+      max_offblock: max |H_ij| over off-block entries
+      where: one offending (i,j) pair (None if ok)
+    """
+    H = np.asarray(H)
+    n = H.shape[0]
+    S = np.array(sorted(set(S)), dtype=int)
+    if H.shape[0] != H.shape[1]:
+        raise ValueError("H must be square.")
+    if np.any(S < 0) or np.any(S >= n):
+        raise ValueError("indices in S out of range.")
+
+    mask = np.ones(n, dtype=bool)
+    mask[S] = False
+    T = np.nonzero(mask)[0]  # complement
+
+    # Off-block pieces:
+    A = H[np.ix_(S, T)]             # S x T
+    if assume_hermitian:
+        # If H is Hermitian, checking one direction is enough.
+        off = np.max(np.abs(A)) if A.size else 0.0
+        if off <= tol:
+            return True, float(off), None
+        k = np.argmax(np.abs(A))
+        i = S[k // len(T)]
+        j = T[k %  len(T)]
+        return False, float(off), (int(i), int(j))
+
+    B = H[np.ix_(T, S)]             # T x S
+    off = max(np.max(np.abs(A)) if A.size else 0.0,
+              np.max(np.abs(B)) if B.size else 0.0)
+
+    if off <= tol:
+        return True, float(off), None
+
+    # find one witness location (prefer the larger one)
+    if A.size and np.max(np.abs(A)) >= (np.max(np.abs(B)) if B.size else -1):
+        k = np.argmax(np.abs(A))
+        i = S[k // len(T)]
+        j = T[k %  len(T)]
+    else:
+        k = np.argmax(np.abs(B))
+        i = T[k // len(S)]
+        j = S[k %  len(S)]
+    return False, float(off), (int(i), int(j))
 
 # === basis ===
 
@@ -311,10 +368,13 @@ if __name__ == "__main__":
     '''
     
     # Test exponentially compressed Laplaican
-    n = 3
-    q = 4
-    basis = laplacian_exp_comp_basis(n, q)
-    print(basis)
-    M = proj_to_subspace(laplacian_exp(n, q), basis, q)
+    n = 2
+    q = 5
+    str_basis = laplacian_exp_comp_basis(n, q)
+    ind_basis = string_basis_to_indices(str_basis, q)
+    print(ind_basis)
+    H = laplacian_exp(n, q)
+    M = proj_to_subspace(laplacian_exp(n, q), str_basis, q)
     print(M)
     print(is_banded_toeplitz(M, 1))
+    print(is_invariant_subspace(H, ind_basis))
