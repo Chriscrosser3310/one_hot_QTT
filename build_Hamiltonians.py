@@ -86,7 +86,6 @@ def is_banded_toeplitz(A, w: int, tol: float = 1e-12) -> bool:
 
     return True
 
-
 # === basis ===
 
 # Basis for exponentially compressed Laplacian
@@ -101,7 +100,10 @@ def laplacian_exp_comp_basis(n, q):
             new_basis += [str(i)+s for s in prev_basis]
         else:
             new_basis += [str(i)+s for s in rev_prev_basis]
-    new_basis += [str(q-1) * n]
+    if q % 2 == 0:
+        new_basis += [str(q-1) + "0"*(n-1)]
+    else:
+        new_basis += [str(q-1) * n]
     return new_basis
 
 # === Hamitlonians ===
@@ -232,7 +234,10 @@ def laplacian_exp(n, q):
     H = kron([np.identity(q), Hp])
     
     boundary_1 = [-proj_i(0, q), sym_outer_ij(0, 1, q)] + [np.identity(q)] * (n - 2)
-    boundary_2 = [-proj_i(q-1, q), sym_outer_ij(q-1, q-2, q)] + [np.identity(q)] * (n - 2)
+    if q % 2 == 0:
+        boundary_2 = [-proj_i(q-1, q), sym_outer_ij(0, 1, q)] + [np.identity(q)] * (n - 2)
+    else:
+        boundary_2 = [-proj_i(q-1, q), sym_outer_ij(q-1, q-2, q)] + [np.identity(q)] * (n - 2)
     
     H += kron(boundary_1)
     H += kron(boundary_2)
@@ -307,7 +312,7 @@ if __name__ == "__main__":
     
     # Test exponentially compressed Laplaican
     n = 3
-    q = 7
+    q = 4
     basis = laplacian_exp_comp_basis(n, q)
     print(basis)
     M = proj_to_subspace(laplacian_exp(n, q), basis, q)
