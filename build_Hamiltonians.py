@@ -143,6 +143,45 @@ def is_invariant_subspace(H, S, tol=1e-12, assume_hermitian=False):
         j = S[k %  len(S)]
     return False, float(off), (int(i), int(j))
 
+def permute_group_front(A, idx):
+    """
+    Permute rows and columns of A so that indices in `idx`
+    appear first (in the given order), followed by the rest.
+
+    Parameters
+    ----------
+    A : (n, n) array_like
+        Square matrix to be permuted
+    idx : list or array of int
+        Indices to move to the front (e.g. [0, 3, 4])
+
+    Returns
+    -------
+    A_perm : (n, n) ndarray
+        Permuted matrix
+    perm : ndarray
+        Permutation vector such that
+        A_perm = A[np.ix_(perm, perm)]
+    """
+    A = np.asarray(A)
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+        raise ValueError("A must be a square matrix")
+
+    n = A.shape[0]
+    idx = list(idx)
+
+    if len(set(idx)) != len(idx):
+        raise ValueError("idx contains duplicates")
+    if any(i < 0 or i >= n for i in idx):
+        raise ValueError("idx out of range")
+
+    rest = [i for i in range(n) if i not in idx]
+    perm = np.array(idx + rest, dtype=int)
+
+    A_perm = A[np.ix_(perm, perm)]
+    return A_perm, perm
+
+
 # === basis ===
 
 # Basis for exponentially compressed Laplacian
@@ -277,7 +316,7 @@ def gray_code_permutation(n, q, dtype=int):
     P_list = [RP if i % 2 == 1 else P for i in range(q)]
     return block_diag(*P_list)
 
-# exponential compression of Laplacian matrix
+# exponential compression of Laplacian matrix (recursive version)
 def laplacian_exp(n, q):
     if n == 1:
         L = np.zeros((q, q))
@@ -308,6 +347,34 @@ def laplacian_exp(n, q):
     
     return H
     
+# exponential compression of Laplacian matrix (iterative version)
+def laplacian_exp_iter(n, q):
+    H0 = np.zeros((q, q))
+    np.fill_diagonal(H0, 0)
+    if q > 1:
+        idx = np.arange(q - 1)
+        H0[idx, idx + 1] = 1
+        H0[idx + 1, idx] = 1
+    H = kron([np.identity(q**(n-1)), H0])
+    
+    for l in range(0, n-1):
+        boundary_1 =  [np.identity(q)] * (n-2-l) + [-proj_i(0, q), sym_outer_ij(0, 1, q)] + [np.identity(q)] * l
+        if q % 2 == 0:
+            boundary_2 = [np.identity(q)] * (n-2-l) + [-proj_i(q-1, q), sym_outer_ij(0, 1, q)] + [np.identity(q)] * l
+        else:
+            boundary_2 = [np.identity(q)] * (n-2-l) + [-proj_i(q-1, q), sym_outer_ij(q-1, q-2, q)] + [np.identity(q)] * l
+        
+        H += kron(boundary_1)
+        H += kron(boundary_2)
+        
+        for i in range(0, q-1):
+            if i % 2 == 0:
+                term = [np.identity(q)] * (n-2-l) + [sym_outer_ij(i, i+1, q), proj_i(0, q)] + [np.identity(q)] * l
+            else:
+                term = [np.identity(q)] * (n-2-l) + [sym_outer_ij(i, i+1, q), proj_i(q-1, q)] + [np.identity(q)] * l
+            H += kron(term)
+    
+    return H
     
 
 if __name__ == "__main__":
@@ -373,8 +440,11 @@ if __name__ == "__main__":
     str_basis = laplacian_exp_comp_basis(n, q)
     ind_basis = string_basis_to_indices(str_basis, q)
     print(ind_basis)
-    H = laplacian_exp(n, q)
-    M = proj_to_subspace(laplacian_exp(n, q), str_basis, q)
+    H = laplacian_exp_iter(n, q)
+    print(H)
+    M = proj_to_subspace(H, str_basis, q)
+    perm_H, _ = permute_group_front(H, ind_basis)
+    print(perm_H)
     print(M)
     print(is_banded_toeplitz(M, 1))
     print(is_invariant_subspace(H, ind_basis))
