@@ -1,6 +1,8 @@
 from typing import List
+import numpy as np
+from itertools import chain
 from qiskit import QuantumCircuit
-from qiskit.circuit.library import XXPlusYYGate, PauliEvolutionGate
+from qiskit.circuit.library import UnitaryGate, XXPlusYYGate, PauliEvolutionGate
 from qiskit.quantum_info import SparsePauliOp
 from one_hot_basis import ith_gray_binary, ith_gray_onehot
 from build_Hamiltonians import g_end
@@ -228,6 +230,112 @@ def one_hot_gray_trotter_circuit(D, n, q, W, dt, n_steps,
     if measure:
         qc.measure(range(D*q*n), range(D*q*n))
     return qc
+
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import UnitaryGate
+
+
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import UnitaryGate
+
+
+def append_gate_exp_exchange(qc, reg, q, theta, b, c, label="exchange"):
+    # reg can be [int] or [Qubit]
+    reg = list(reg)
+    if len(reg) == 0:
+        raise ValueError("Empty reg.")
+    if isinstance(reg[0], int):
+        reg = [qc.qubits[i] for i in reg]
+
+    if q < 2:
+        raise ValueError("q must be >= 2.")
+    k = int(np.ceil(np.log2(q)))
+    if len(reg) != k:
+        raise ValueError(f"Expected len(reg)={k} for q={q}. Got {len(reg)}.")
+
+    if not (0 <= b < q and 0 <= c < q) or b == c:
+        raise ValueError("Need 0 <= b,c < q and b != c.")
+
+    dim = 1 << k
+    U = np.eye(dim, dtype=complex)
+    ct = np.cos(theta)
+    st = 1j * np.sin(theta)
+
+    U[b, b] = ct
+    U[c, c] = ct
+    U[b, c] = st
+    U[c, b] = st
+
+    qc.append(UnitaryGate(U, label=label), reg)
+    return qc
+
+
+def append_gate_exp_projector_exchange(qc, reg1, reg2, q, theta, a, b, c, label="P_a_exchange"):
+    # reg1/reg2 can be [int] or [Qubit]
+    reg1 = list(reg1)
+    reg2 = list(reg2)
+    if len(reg1) == 0 or len(reg2) == 0:
+        raise ValueError("Empty reg1/reg2.")
+    if isinstance(reg1[0], int):
+        reg1 = [qc.qubits[i] for i in reg1]
+    if isinstance(reg2[0], int):
+        reg2 = [qc.qubits[i] for i in reg2]
+
+    if q < 2:
+        raise ValueError("q must be >= 2.")
+    k = int(np.ceil(np.log2(q)))
+    if len(reg1) != k or len(reg2) != k:
+        raise ValueError(f"Expected len(reg1)=len(reg2)={k} for q={q}.")
+
+    if not (0 <= a < q and 0 <= b < q and 0 <= c < q) or b == c:
+        raise ValueError("Need 0 <= a,b,c < q and b != c.")
+
+    dim = 1 << k
+    U = np.eye(dim, dtype=complex)
+    ct = np.cos(theta)
+    st = 1j * np.sin(theta)
+
+    U[b, b] = ct
+    U[c, c] = ct
+    U[b, c] = st
+    U[c, b] = st
+
+    base = UnitaryGate(U, label=label)
+    controlled = base.control(num_ctrl_qubits=k, ctrl_state=a)
+    qc.append(controlled, reg1 + reg2)
+    return qc
+
+# exponentially compreseed laplacian
+def exp_compressed_lattice_qudit_trotter(D, n, q, W, dt, n_steps,
+                            init_state="center",
+                            disorder_type=None,
+                            seed=0,
+                            measure=True):
+    
+    p = lambda j: 0 if j % 2 == 0 else q-1
+    pp = lambda j: 1 if j % 2 == 0 else q-2
+    k = int(np.ceil(np.log2(q)))
+    
+    qc = QuantumCircuit(n*k, n*k)
+    for _ in range(n_steps):
+        for i in range(q-1):
+            qc = append_gate_exp_exchange(qc, range(k), q, dt, i, i+1)
+        for l in chain(range(0, n-1, 2), range(1, n-1, 2)):
+            qc = append_gate_exp_projector_exchange(qc, range(k*(l+1), k*(l+2)), range(k*l, k*(l+1)), q, -dt, 0, 0, 1)
+            qc = append_gate_exp_projector_exchange(qc, range(k*(l+1), k*(l+2)), range(k*l, k*(l+1)),  q, -dt, q-1, p(q), pp(q))
+            for i in range(q-1):
+                qc = append_gate_exp_projector_exchange(qc, range(k*l, k*(l+1)), range(k*(l+1), k*(l+2)), q, dt, p(i), i, i+1)
+    return qc
+    
+# exponentially compreseed laplacian
+def exp_compressed_lattice_one_hot_trotter(D, n, q, W, dt, n_steps,
+                            init_state="center",
+                            disorder_type=None,
+                            seed=0,
+                            measure=True):
+    return
 
 if __name__ == "__main__":
 
